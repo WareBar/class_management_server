@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "id": 1,
+    "firstName": "Barry",
+    "lastName": "Adam",
+    "section": "BSIT-4B",
+    "status": "present"
+  }
+]
