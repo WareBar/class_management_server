@@ -1,101 +1,86 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const cors = require('cors');
+require('dotenv').config();
+const supabase = require('./supabaseClient');
+
 const app = express();
 const PORT = 3000;
-const cors = require('cors')
 
-app.use(express.json(),cors());
-
-const DATA_FILE = path.join(__dirname, 'users.json');
-
-// Safely read users from JSON file
-function readUsers() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) {
-      fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2));
-      return [];
-    }
-
-    const data = fs.readFileSync(DATA_FILE, 'utf-8').trim();
-
-    if (!data) {
-      fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2));
-      return [];
-    }
-
-    return JSON.parse(data);
-  } catch (err) {
-    console.error('Failed to read users.json, resetting file...', err.message);
-    fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2));
-    return [];
-  }
-}
-
-// Utility: Safely write users to JSON file
-function writeUsers(users) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(users, null, 2));
-  } catch (err) {
-    console.error('Failed to write users.json:', err.message);
-  }
-}
+app.use(express.json(), cors());
 
 // POST: Add or update a user
-app.post('/users', (req, res) => {
+app.post('/users', async (req, res) => {
   const { firstName, lastName, section, status } = req.body;
 
   if (!firstName || !lastName || !section || !status) {
     return res.status(400).json({ message: 'Missing required fields.' });
   }
 
-  let users = readUsers();
+  try {
+    // Check if user exists
+    const { data: existingUser, error: selectError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('first_name', firstName)
+      .eq('last_name', lastName)
+      .single();
 
-  const userIndex = users.findIndex(
-    user =>
-      user.firstName.toLowerCase() === firstName.toLowerCase() &&
-      user.lastName.toLowerCase() === lastName.toLowerCase()
-  );
+    if (selectError && selectError.code !== 'PGRST116') {
+      throw selectError;
+    }
 
-  if (userIndex !== -1) {
-    users[userIndex].status = status;
-    writeUsers(users);
-    console.log(`Updated: ${lastName}, ${firstName} → ${status}`);
-    return res.status(200).json({
-      message: `Attendance for ${lastName}, ${firstName} updated to ${status}`
+    if (existingUser) {
+      // Update existing user
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ status })
+        .eq('id', existingUser.id);
+
+      if (updateError) throw updateError;
+
+      console.log(`Updated: ${lastName}, ${firstName} → ${status}`);
+      return res.status(200).json({
+        message: `Attendance for ${lastName}, ${firstName} updated to ${status}`
+      });
+    }
+
+    // Insert new user
+    const { error: insertError } = await supabase
+      .from('users')
+      .insert([{ first_name: firstName, last_name: lastName, section, status }]);
+
+    if (insertError) throw insertError;
+
+    console.log(`Added: ${lastName}, ${firstName} → ${status}`);
+    res.status(201).json({
+      message: `New student ${lastName}, ${firstName} added with status: ${status}`
     });
+  } catch (err) {
+    console.error('Supabase error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
   }
-
-  const newUser = {
-    id: users.length ? Math.max(...users.map(u => u.id)) + 1 : 1,
-    firstName,
-    lastName,
-    section,
-    status
-  };
-
-  users.push(newUser);
-  writeUsers(users);
-  console.log(`Added: ${lastName}, ${firstName} → ${status}`);
-
-  res.status(201).json({
-    message: `New student ${lastName}, ${firstName} added with status: ${status}`
-  });
 });
 
-//GET: All users
-app.get('/users', (req, res) => {
-  const users = readUsers();
-  res.status(200).json(users);
+// GET: All users
+app.get('/users', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('users').select('*');
+    if (error) throw error;
+
+    res.status(200).json(data);
+  } catch (err) {
+    console.error('Supabase error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
-// GET: Root
+// Root
 app.get('/', (req, res) => {
-  res.send('Server is up and running');
+  res.send('Server is up and running with Supabase 🚀');
 });
 
 app.listen(PORT, () => {
-  console.log(` Server is running at http://localhost:${PORT}`);
+  console.log(`Server is running at http://localhost:${PORT}`);
 });
 
 module.exports = app;
