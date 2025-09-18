@@ -3,11 +3,12 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 const PORT = 3000;
-const cors = require('cors')
+const cors = require('cors');
 
 app.use(express.json(),cors());
 
-const DATA_FILE = path.join(__dirname, 'users.json');
+// Use /tmp directory instead of project root for vercel session persistence
+const DATA_FILE = path.join('/tmp', 'users.json');
 
 // Safely read users from JSON file
 function readUsers() {
