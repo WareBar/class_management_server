@@ -5,7 +5,7 @@ const PORT = 3000;
 
 app.use(express.json(), cors());
 
-let users = []; // 👈 in-memory storage
+let users = [];
 
 // POST: Add or update a user
 app.post("/users", (req, res) => {
